@@ -1,0 +1,158 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 'email' in request.auth.token && (
+        request.auth.token.email == 'shubhuusinha777@gmail.com' || 
+        request.auth.token.email == 'admin@clinic.com'
+      );
+    }
+
+    function isDoctor() {
+      return isSignedIn() && 'email' in request.auth.token && (
+        request.auth.token.email == 'dr.mahesh@clinic.com'
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Check if the database is unseeded (by checking if the announcement banner is missing)
+    function isDbEmpty() {
+      return !exists(/databases/$(database)/documents/announcements/banner);
+    }
+
+    // --- COLLECTION RULES ---
+
+    // 1. Users Collection
+    match /users/{userId} {
+      // Anyone signed in can read a profile if it's their own, or if the requester is doctor/admin.
+      // Additionally, allow reading a profile if the user being read is a doctor.
+      allow read: if isSignedIn() && (
+        userId == request.auth.uid || 
+        isDoctor() || 
+        isAdmin() || 
+        (resource != null && resource.data.role == 'doctor')
+      );
+      
+      // A user can create their own profile during sign-up
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      
+      // Only the owner can update their own profile, but they cannot change their role unless they are an admin or have a special email
+      allow update: if isSignedIn() && (
+        (userId == request.auth.uid && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) || 
+          isAdmin() ||
+          ('email' in request.auth.token && (
+            request.auth.token.email == 'shubhuusinha777@gmail.com' ||
+            request.auth.token.email == 'admin@clinic.com' ||
+            request.auth.token.email == 'dr.mahesh@clinic.com'
+          ))
+        )) ||
+        isAdmin()
+      );
+      
+      // Only admins can delete profiles
+      allow delete: if isAdmin();
+    }
+
+    // 2. Doctor Availability
+    match /doctorAvailability/{id} {
+      allow read: if true; // Publicly accessible to show "Before You Leave Home" status
+      allow write: if isDoctor() || isAdmin() || isDbEmpty();
+    }
+
+    // 3. Services, Timings, FAQs, Testimonials, Blogs, Gallery, Settings, Announcements (Static Content)
+    match /services/{id} {
+      allow read: if true;
+      allow write: if isDoctor() || isAdmin() || isDbEmpty();
+    }
+    
+    match /clinicTimings/{id} {
+      allow read: if true;
+      allow write: if isDoctor() || isAdmin() || isDbEmpty();
+    }
+    
+    match /FAQs/{id} {
+      allow read: if true;
+      allow write: if isDoctor() || isAdmin() || isDbEmpty();
+    }
+    
+    match /testimonials/{id} {
+      allow read: if true;
+      allow write: if isDoctor() || isAdmin() || isDbEmpty();
+    }
+    
+    match /blogs/{id} {
+      allow read: if true;
+      allow write: if isDoctor() || isAdmin() || isDbEmpty();
+    }
+    
+    match /gallery/{id} {
+      allow read: if true;
+      allow write: if isDoctor() || isAdmin() || isDbEmpty();
+    }
+    
+    match /settings/{id} {
+      allow read: if true;
+      allow write: if isDoctor() || isAdmin() || isDbEmpty();
+    }
+    
+    match /announcements/{id} {
+      allow read: if true;
+      allow write: if isDoctor() || isAdmin() || isDbEmpty();
+    }
+
+    // 4. Appointments
+    match /appointments/{appointmentId} {
+      // Doctors/Admins can read all. Patients can only read their own appointments.
+      allow read: if isDoctor() || isAdmin() || (isSignedIn() && resource.data.patientId == request.auth.uid);
+      
+      // Any signed in user can create an appointment if they are the patient. Doctors/admins can also book.
+      allow create: if isSignedIn() && (request.resource.data.patientId == request.auth.uid || isDoctor() || isAdmin());
+      
+      // Only doctors, admins, or the owning patient can update an appointment
+      allow update: if isDoctor() || isAdmin() || (
+        isSignedIn() && 
+        resource.data.patientId == request.auth.uid && 
+        request.resource.data.patientId == request.auth.uid
+      );
+      
+      // Only admins and doctors can delete appointments
+      allow delete: if isDoctor() || isAdmin();
+    }
+
+    // 5. Contact Messages
+    match /messages/{messageId} {
+      allow create: if true; // Anyone can submit a contact/query message
+      allow read, update, delete: if isDoctor() || isAdmin();
+    }
+
+    // 6. Notifications
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isDoctor() || isAdmin());
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isDoctor() || isAdmin());
+      allow delete: if isDoctor() || isAdmin();
+    }
+
+    // 7. Reviews
+    match /reviews/{reviewId} {
+      allow read: if isDoctor() || isAdmin() || (isSignedIn() && resource.data.patientId == request.auth.uid) || (resource != null && resource.data.status == 'approved') || isDbEmpty();
+      allow create: if isSignedIn() || isDbEmpty();
+      allow update, delete: if isDoctor() || isAdmin() || isDbEmpty();
+    }
+  }
+}

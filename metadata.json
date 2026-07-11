@@ -1,0 +1,6 @@
+{
+  "name": "Mahesh Dental Clinic",
+  "description": "Premium Full-Stack Dental Clinic Management System with Real-Time Doctor Availability and Online Appointment Booking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
